@@ -19,6 +19,10 @@ set(PROJECT_SOURCES
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
+        figures/rectgraphicitem.h
+        figures/rectgraphicitem.cpp
+        figures/connectorgraphicitem.h
+        figures/connectorgraphicitem.cpp
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

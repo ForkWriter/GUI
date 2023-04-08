@@ -3,6 +3,13 @@
 
 #include <QMainWindow>
 
+#include <QObject>
+#include <QGraphicsItem>
+#include <QPainter>
+#include <QGraphicsSceneMouseEvent>
+#include <QDebug>
+#include <QCursor>
+
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -17,5 +24,6 @@ public:
 
 private:
   Ui::MainWindow *ui;
+  QGraphicsScene *scene;
 };
 #endif // MAINWINDOW_H
