@@ -14,15 +14,34 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
 
+include_directories(figures)
+
 set(PROJECT_SOURCES
         main.cpp
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
+        figures/colorlabel.h
+        figures/colorlabel.cpp
         figures/rectgraphicitem.h
         figures/rectgraphicitem.cpp
+        figures/rectgraphicitemsettings.h
+        figures/rectgraphicitemsettings.cpp
+        figures/rectitemsettings.ui
+        figures/selectionrect.h
+        figures/selectionrect.cpp
         figures/connectorgraphicitem.h
         figures/connectorgraphicitem.cpp
+        figures/connectorgraphicitemsettings.h
+        figures/connectorgraphicitemsettings.cpp
+        figures/connectoritemsettings.ui
+        figures/cornerdots.h
+        figures/cornerdots.cpp
+        mainscene.h
+        mainscene.cpp
+        sceneview.h
+        sceneview.cpp
+        icons.qrc
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)

@@ -1,0 +1,9 @@
+<RCC>
+    <qresource prefix="/">
+        <file>icons/arrow-top-left.png</file>
+        <file>icons/arrow-up-down.png</file>
+        <file>icons/content-save.png</file>
+        <file>icons/folder-upload.png</file>
+        <file>icons/rotate-right.png</file>
+    </qresource>
+</RCC>
