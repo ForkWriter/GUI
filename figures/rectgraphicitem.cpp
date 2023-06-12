@@ -7,30 +7,20 @@
 #include <QGraphicsRectItem>
 #include <math.h>
 #include "figures/cornerdots.h"
-
-static const double Pi = 3.14159265358979323846264338327950288419717;
-static double TwoPi = 2.0 * Pi;
-
-static qreal normalizeAngle(qreal angle)
-{
-    while (angle < 0)
-        angle += TwoPi;
-    while (angle > TwoPi)
-        angle -= TwoPi;
-    return angle;
-}
+#include "redactdialog.h"
 
 RectGraphicItem::RectGraphicItem(QObject *parent) :
     QObject(parent),
-    m_cornerFlags(0),
-    m_actionFlags(ResizeState)
+    entity_name(new QGraphicsSimpleTextItem(this)),
+    prim_rect(new QGraphicsRectItem(this)),
+    max_width(0)
 {
-    setAcceptHoverEvents(true);
     setFlags(ItemIsSelectable|ItemSendsGeometryChanges);
     for(int i = 0; i < 8; i++){
         cornerGrabber[i] = new CornerDots(this);
     }
     setPositionGrabbers();
+    hideGrabbers();
 }
 
 RectGraphicItem::~RectGraphicItem()
@@ -56,89 +46,122 @@ void RectGraphicItem::setPreviousPosition(const QPointF previousPosition)
 
 void RectGraphicItem::setRect(qreal x, qreal y, qreal w, qreal h)
 {
-    setRect(QRectF(x,y,w,h));
+  max_width = w;
+  max_height = h;
+  setRect(QRectF(x,y,w,h));
 }
 
 void RectGraphicItem::setRect(const QRectF &rect)
 {
-    QGraphicsRectItem::setRect(rect);
-    if(brush().gradient() != 0){
-        const QGradient * grad = brush().gradient();
-        if(grad->type() == QGradient::LinearGradient){
-            auto tmpRect = this->rect();
-            const QLinearGradient *lGradient = static_cast<const QLinearGradient *>(grad);
-            QLinearGradient g = *const_cast<QLinearGradient*>(lGradient);
-            g.setStart(tmpRect.left() + tmpRect.width()/2,tmpRect.top());
-            g.setFinalStop(tmpRect.left() + tmpRect.width()/2,tmpRect.bottom());
-            setBrush(g);
-        }
+  QPointF sp = rect.topLeft();
+  sp.setY(rect.topLeft().y() - 20);
+  entity_name->setPos(sp);
+  sp.setX(sp.x() + 2);
+
+  double prim_height = 20;
+  for (int i = 0, num = 0; i < attributes.size(); i++) {
+    if (attributes[i]->text().toStdString().find("PK") != std::variant_npos) {
+      prim_height = 20 + 15 * num;
+      sp.setY(rect.topLeft().y() + 15 * num++);
+      attributes[i]->setPos(sp);
     }
+  }
+  for (int i = 0, num = 0; i < attributes.size(); i++) {
+    if (attributes[i]->text().toStdString().find("PK") == std::variant_npos) {
+      int width = attributes[i]->boundingRect().width() + 5;
+      if (max_width < width)
+        max_width = width;
+      sp.setY(rect.y() + prim_height + 15 * num++);
+      attributes[i]->setPos(sp);
+      if (sp.y() >= (rect.y() + rect.height())) {
+        max_height += 15;
+      }
+    }
+  }
+  prim_rect->setRect(QRectF(rect.x(), rect.y(), max_width, prim_height));
+  QGraphicsRectItem::setRect(QRectF(rect.x(), rect.y(), max_width, max_height));
+  scenePos = rect.topLeft();
+}
+
+void RectGraphicItem::setAttributes()
+{
+  attributes.clear();
+  std::vector<std::string> attrs_name = entity.second->attributes();
+  for (int i = 0; i < attrs_name.size(); i++) {
+    std::string attr_value = attrs_name[i] + "(" +
+                              entity.second->attribute(attrs_name[i])->type() +
+                              "): " + entity.second->attribute(attrs_name[i])->parameters();
+    if (entity.second->attribute(attrs_name[i])->primaryKey()) {
+      attr_value += " PK";
+    }
+    QGraphicsSimpleTextItem *attr_text = new QGraphicsSimpleTextItem(this);
+    attr_text->setText(attr_value.c_str());
+    attributes.push_back(attr_text);
+    if (max_width < attr_text->boundingRect().width())
+      max_width = attr_text->boundingRect().width() + 5;
+  }
+}
+
+bool RectGraphicItem::checkPos(std::string params)
+{
+  std::string old_params = entity.second->additionalModelParameters().toString().toStdString();
+  return params == old_params;
+}
+
+void RectGraphicItem::saveAdditionalParams(QPointF point)
+{
+  std::string x = QString::number(point.x()).toStdString();
+  std::string y = QString::number(point.y()).toStdString();
+  std::string w = QString::number(max_width).toStdString();
+  std::string h = QString::number(max_height).toStdString();
+  std::string add_params = x + ";" + y + ";" + w + ";" + h + ";";
+  if (!checkPos(add_params))
+    entity.second->setAdditionalModelParameters(add_params.c_str());
+}
+
+std::vector<qreal> RectGraphicItem::restoreCoords()
+{
+  QString params = entity.second->additionalModelParameters().toString();
+  std::vector<qreal> coord;
+  QRegExp re("-?[0-9]+");
+  int lastPos = 0;
+  while((lastPos = re.indexIn(params, lastPos)) != -1) {
+    lastPos += re.matchedLength();
+    coord.push_back(re.cap(0).toDouble());
+  }
+  return coord;
+}
+
+void RectGraphicItem::restoreFromAdditionalParams()
+{
+  std::vector<qreal> coord = restoreCoords();
+  setRect(coord[0], coord[1], coord[2], coord[3]);
+}
+
+void RectGraphicItem::setName(std::string name)
+{
+  entity_name->setText(name.c_str());
+}
+
+void RectGraphicItem::redactAttributes()
+{
+  RedactDialog *dialog = new RedactDialog(nullptr, entity.second, entity_name->text().toStdString());
+  connect(dialog, &RedactDialog::attrChange, this, &RectGraphicItem::attribute_parameters);
+  //connect(dialog, &RedactDialog::nameChange, this, &RectGraphicItem::attribute_parameters);
+  dialog->show();
 }
 
 void RectGraphicItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    QPointF pt = event->pos();
-    if(m_actionFlags == ResizeState){
-        switch (m_cornerFlags) {
-        case Top:
-            resizeTop(pt);
-            break;
-        case Bottom:
-            resizeBottom(pt);
-            break;
-        case Left:
-            resizeLeft(pt);
-            break;
-        case Right:
-            resizeRight(pt);
-            break;
-        case TopLeft:
-            resizeTop(pt);
-            resizeLeft(pt);
-            break;
-        case TopRight:
-            resizeTop(pt);
-            resizeRight(pt);
-            break;
-        case BottomLeft:
-            resizeBottom(pt);
-            resizeLeft(pt);
-            break;
-        case BottomRight:
-            resizeBottom(pt);
-            resizeRight(pt);
-            break;
-        default:
-            if (m_leftMouseButtonPressed) {
-                setCursor(Qt::ClosedHandCursor);
-                auto dx = event->scenePos().x() - m_previousPosition.x();
-                auto dy = event->scenePos().y() - m_previousPosition.y();
-                moveBy(dx,dy);
-                setPreviousPosition(event->scenePos());
-                emit signalMove(this, dx, dy);
-            }
-            break;
-        }
-    } else {
-        switch (m_cornerFlags) {
-        case TopLeft:
-        case TopRight:
-        case BottomLeft:
-        case BottomRight: {
-            rotateItem(pt);
-            break;
-        }
-        default:
-            if (m_leftMouseButtonPressed) {
-                setCursor(Qt::ClosedHandCursor);
-                auto dx = event->scenePos().x() - m_previousPosition.x();
-                auto dy = event->scenePos().y() - m_previousPosition.y();
-                moveBy(dx,dy);
-                setPreviousPosition(event->scenePos());
-                emit signalMove(this, dx, dy);
-            }
-            break;
-        }
+    if (m_leftMouseButtonPressed) {
+        setCursor(Qt::ClosedHandCursor);
+        auto dx = event->scenePos().x() - m_previousPosition.x();
+        auto dy = event->scenePos().y() - m_previousPosition.y();
+        moveBy(dx,dy);
+        scenePos.setX(scenePos.x() + dx);
+        scenePos.setY(scenePos.y() + dy);
+        setPreviousPosition(event->scenePos());
+        emit signalMove(this, dx, dy);
     }
     QGraphicsItem::mouseMoveEvent(event);
 }
@@ -157,238 +180,76 @@ void RectGraphicItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     if (event->button() & Qt::LeftButton) {
         m_leftMouseButtonPressed = false;
+        saveAdditionalParams(scenePos);
     }
     QGraphicsItem::mouseReleaseEvent(event);
 }
 
 void RectGraphicItem::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 {
-    m_actionFlags = (m_actionFlags == ResizeState)?RotationState:ResizeState;
-    setVisibilityGrabbers();
+    AddAttributeDialog *dialog = new AddAttributeDialog(nullptr, DB);
+    connect(dialog, &AddAttributeDialog::AttrAdd, this, &RectGraphicItem::attribute_parameters);
+    dialog->show();
     QGraphicsItem::mouseDoubleClickEvent(event);
 }
 
-void RectGraphicItem::hoverEnterEvent(QGraphicsSceneHoverEvent *event)
+const std::pair<std::string, Entity *> &RectGraphicItem::getEntity() const
 {
-    setPositionGrabbers();
-    setVisibilityGrabbers();
-    QGraphicsItem::hoverEnterEvent(event);
+  return entity;
 }
 
-void RectGraphicItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *event)
+QGraphicsSimpleTextItem *RectGraphicItem::getEntity_name() const
 {
-    m_cornerFlags = 0;
-    hideGrabbers();
-    setCursor(Qt::CrossCursor);
-    QGraphicsItem::hoverLeaveEvent( event );
+  return entity_name;
 }
 
-void RectGraphicItem::hoverMoveEvent(QGraphicsSceneHoverEvent *event)
+void RectGraphicItem::attribute_parameters(Attribute *new_attr, std::string name)
 {
-    QPointF pt = event->pos();              // The current position of the mouse
-    qreal drx = pt.x() - rect().right();    // Distance between the mouse and the right
-    qreal dlx = pt.x() - rect().left();     // Distance between the mouse and the left
-
-    qreal dby = pt.y() - rect().top();      // Distance between the mouse and the top
-    qreal dty = pt.y() - rect().bottom();   // Distance between the mouse and the bottom
-
-    // If the mouse position is within a radius of 7
-    // to a certain side( top, left, bottom or right)
-    // we set the Flag in the Corner Flags Register
-
-    m_cornerFlags = 0;
-    if( dby < 7 && dby > -7 ) m_cornerFlags |= Top;       // Top side
-    if( dty < 7 && dty > -7 ) m_cornerFlags |= Bottom;    // Bottom side
-    if( drx < 7 && drx > -7 ) m_cornerFlags |= Right;     // Right side
-    if( dlx < 7 && dlx > -7 ) m_cornerFlags |= Left;      // Left side
-
-    if(m_actionFlags == ResizeState){
-        QPixmap p(":/icons/arrow-up-down.png");
-        QPixmap pResult;
-        QTransform trans = transform();
-        switch (m_cornerFlags) {
-        case Top:
-        case Bottom:
-            pResult = p.transformed(trans);
-            setCursor(pResult.scaled(24,24,Qt::KeepAspectRatio));
-            break;
-        case Left:
-        case Right:
-            trans.rotate(90);
-            pResult = p.transformed(trans);
-            setCursor(pResult.scaled(24,24,Qt::KeepAspectRatio));
-            break;
-        case TopRight:
-        case BottomLeft:
-            trans.rotate(45);
-            pResult = p.transformed(trans);
-            setCursor(pResult.scaled(24,24,Qt::KeepAspectRatio));
-            break;
-        case TopLeft:
-        case BottomRight:
-            trans.rotate(135);
-            pResult = p.transformed(trans);
-            setCursor(pResult.scaled(24,24,Qt::KeepAspectRatio));
-            break;
-        default:
-            setCursor(Qt::CrossCursor);
-            break;
-        }
-    } else {
-        switch (m_cornerFlags) {
-        case TopLeft:
-        case TopRight:
-        case BottomLeft:
-        case BottomRight: {
-            QPixmap p(":/icons/rotate-right.png");
-            setCursor(QCursor(p.scaled(24,24,Qt::KeepAspectRatio)));
-            break;
-        }
-        default:
-            setCursor(Qt::CrossCursor);
-            break;
-        }
-    }
-    QGraphicsItem::hoverMoveEvent( event );
+    ParametersDialog *dialog = new ParametersDialog(nullptr, new_attr, name);
+    connect(dialog, &ParametersDialog::AttrName, this, &RectGraphicItem::attribute_add);
+    dialog->show();
 }
 
-QVariant RectGraphicItem::itemChange(QGraphicsItem::GraphicsItemChange change, const QVariant &value)
+void RectGraphicItem::attribute_add(std::string name, Attribute *new_attr)
 {
-    switch (change) {
-    case QGraphicsItem::ItemSelectedChange:
-        m_actionFlags = ResizeState;
-        break;
-    default:
-        break;
-    }
-    return QGraphicsItem::itemChange(change, value);
+  if (entity.second->attributeName(new_attr).empty()) {
+    entity.second->addAttribute(new_attr, name);
+  } else {
+    setAttributes();
+  }
+  if (name.empty())
+    name = entity.second->attributeName(new_attr);
+  std::string attr_value = name + "(" + new_attr->type() + "): " + new_attr->parameters();
+  if (new_attr->primaryKey()) {
+    attr_value += " PK";
+  }
+  QGraphicsSimpleTextItem *attr_text = new QGraphicsSimpleTextItem(this);
+  attr_text->setText(attr_value.c_str());
+  attributes.push_back(attr_text);
+  if (max_width < attr_text->boundingRect().width())
+    max_width = attr_text->boundingRect().width() + 5;
+  setRect(rect());
 }
 
-void RectGraphicItem::resizeLeft(const QPointF &pt)
+void RectGraphicItem::setDB(const std::string &newDB)
 {
-    QRectF tmpRect = rect();
-    // if the mouse is on the right side we return
-    if( pt.x() > tmpRect.right() )
-        return;
-    qreal widthOffset =  ( pt.x() - tmpRect.right() );
-    // limit the minimum width
-    if( widthOffset > -10 )
-        return;
-    // if it's negative we set it to a positive width value
-    if( widthOffset < 0 )
-        tmpRect.setWidth( -widthOffset );
-    else
-        tmpRect.setWidth( widthOffset );
-    // Since it's a left side , the rectange will increase in size
-    // but keeps the topLeft as it was
-    tmpRect.translate( rect().width() - tmpRect.width() , 0 );
-    prepareGeometryChange();
-    // Set the ne geometry
-    setRect( tmpRect );
-    // Update to see the result
-    update();
-    setPositionGrabbers();
+  DB = newDB;
 }
 
-void RectGraphicItem::resizeRight(const QPointF &pt)
+
+void RectGraphicItem::setEntity(const std::pair<std::string, Entity *> &newEntity, bool restore)
 {
-    QRectF tmpRect = rect();
-    if( pt.x() < tmpRect.left() )
-        return;
-    qreal widthOffset =  ( pt.x() - tmpRect.left() );
-    if( widthOffset < 10 ) /// limit
-        return;
-    if( widthOffset < 10)
-        tmpRect.setWidth( -widthOffset );
-    else
-        tmpRect.setWidth( widthOffset );
-    prepareGeometryChange();
-    setRect( tmpRect );
-    update();
-    setPositionGrabbers();
+  entity = newEntity;
+  entity_name->setText(newEntity.first.c_str());
+  if (!restore) {
+    saveAdditionalParams(scenePos);
+  }
+  setAttributes();
 }
 
-void RectGraphicItem::resizeBottom(const QPointF &pt)
+void RectGraphicItem::addConnector(ConnectorGraphicItem *item)
 {
-    QRectF tmpRect = rect();
-    if( pt.y() < tmpRect.top() )
-        return;
-    qreal heightOffset =  ( pt.y() - tmpRect.top() );
-    if( heightOffset < 11 ) /// limit
-        return;
-    if( heightOffset < 0)
-        tmpRect.setHeight( -heightOffset );
-    else
-        tmpRect.setHeight( heightOffset );
-    prepareGeometryChange();
-    setRect( tmpRect );
-    update();
-    setPositionGrabbers();
-}
-
-void RectGraphicItem::resizeTop(const QPointF &pt)
-{
-    QRectF tmpRect = rect();
-    if( pt.y() > tmpRect.bottom() )
-        return;
-    qreal heightOffset =  ( pt.y() - tmpRect.bottom() );
-    if( heightOffset > -11 ) /// limit
-        return;
-    if( heightOffset < 0)
-        tmpRect.setHeight( -heightOffset );
-    else
-        tmpRect.setHeight( heightOffset );
-    tmpRect.translate( 0 , rect().height() - tmpRect.height() );
-    prepareGeometryChange();
-    setRect( tmpRect );
-    update();
-    setPositionGrabbers();
-}
-
-void RectGraphicItem::rotateItem(const QPointF &pt)
-{
-    QRectF tmpRect = rect();
-    QPointF center = boundingRect().center();
-    QPointF corner;
-    switch (m_cornerFlags) {
-    case TopLeft:
-        corner = tmpRect.topLeft();
-        break;
-    case TopRight:
-        corner = tmpRect.topRight();
-        break;
-    case BottomLeft:
-        corner = tmpRect.bottomLeft();
-        break;
-    case BottomRight:
-        corner = tmpRect.bottomRight();
-        break;
-    default:
-        break;
-    }
-
-    QLineF lineToTarget(center,corner);
-    QLineF lineToCursor(center, pt);
-    // Angle to Cursor and Corner Target points
-    qreal angleToTarget = ::acos(lineToTarget.dx() / lineToTarget.length());
-    qreal angleToCursor = ::acos(lineToCursor.dx() / lineToCursor.length());
-
-    if (lineToTarget.dy() < 0)
-        angleToTarget = TwoPi - angleToTarget;
-    angleToTarget = normalizeAngle((Pi - angleToTarget) + Pi / 2);
-
-    if (lineToCursor.dy() < 0)
-        angleToCursor = TwoPi - angleToCursor;
-    angleToCursor = normalizeAngle((Pi - angleToCursor) + Pi / 2);
-
-    // Result difference angle between Corner Target point and Cursor Point
-    auto resultAngle = angleToTarget - angleToCursor;
-
-    QTransform trans = transform();
-    trans.translate( center.x(), center.y());
-    trans.rotateRadians(rotation() + resultAngle, Qt::ZAxis);
-    trans.translate( -center.x(),  -center.y());
-    setTransform(trans);
+  connectors.append(item);
 }
 
 void RectGraphicItem::setPositionGrabbers()
@@ -404,29 +265,10 @@ void RectGraphicItem::setPositionGrabbers()
     cornerGrabber[GrabberBottomRight]->setPos(tmpRect.bottomRight().x(), tmpRect.bottomRight().y());
 }
 
-void RectGraphicItem::setVisibilityGrabbers()
-{
-    cornerGrabber[GrabberTopLeft]->setVisible(true);
-    cornerGrabber[GrabberTopRight]->setVisible(true);
-    cornerGrabber[GrabberBottomLeft]->setVisible(true);
-    cornerGrabber[GrabberBottomRight]->setVisible(true);
-
-    if(m_actionFlags == ResizeState){
-        cornerGrabber[GrabberTop]->setVisible(true);
-        cornerGrabber[GrabberBottom]->setVisible(true);
-        cornerGrabber[GrabberLeft]->setVisible(true);
-        cornerGrabber[GrabberRight]->setVisible(true);
-    } else {
-        cornerGrabber[GrabberTop]->setVisible(false);
-        cornerGrabber[GrabberBottom]->setVisible(false);
-        cornerGrabber[GrabberLeft]->setVisible(false);
-        cornerGrabber[GrabberRight]->setVisible(false);
-    }
-}
-
 void RectGraphicItem::hideGrabbers()
 {
-    for(int i = 0; i < 8; i++){
-        cornerGrabber[i]->setVisible(false);
+  for(int i = 0; i < 8; i++){
+      cornerGrabber[i]->hide();
     }
 }
+

@@ -8,13 +8,13 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Widgets REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Widgets REQUIRED)
 
-include_directories(figures)
+include_directories(figures forms DataModeler/dependencies/json/include DataModeler/include)
 
 set(PROJECT_SOURCES
         main.cpp
@@ -37,6 +37,21 @@ set(PROJECT_SOURCES
         figures/connectoritemsettings.ui
         figures/cornerdots.h
         figures/cornerdots.cpp
+        forms/config_types.h
+        forms/config_types.cpp
+        forms/config_types.ui
+        forms/entitynamedialog.h
+        forms/entitynamedialog.cpp
+        forms/entitynamedialog.ui
+        forms/addattributedialog.h
+        forms/addattributedialog.cpp
+        forms/addattributedialog.ui
+        forms/parametersdialog.h
+        forms/parametersdialog.cpp
+        forms/parametersdialog.ui
+        forms/redactdialog.h
+        forms/redactdialog.cpp
+        forms/redactdialog.ui
         mainscene.h
         mainscene.cpp
         sceneview.h
@@ -67,6 +82,8 @@ else()
     endif()
 endif()
 
+add_subdirectory(DataModeler)
+target_link_libraries(GUI_application PRIVATE DataModeler)
 target_link_libraries(GUI_application PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
 
 set_target_properties(GUI_application PROPERTIES
@@ -80,3 +97,5 @@ set_target_properties(GUI_application PROPERTIES
 if(QT_VERSION_MAJOR EQUAL 6)
     qt_finalize_executable(GUI_application)
 endif()
+
+configure_file(${CMAKE_SOURCE_DIR}/DataModeler/types.json ${CMAKE_CURRENT_BINARY_DIR})

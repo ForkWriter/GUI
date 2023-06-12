@@ -4,8 +4,10 @@
 #include <QObject>
 #include <QGraphicsPathItem>
 #include "figures/cornerdots.h"
+#include "figures/rectgraphicitem.h"
 
 class CornerDots;
+class RectGraphicItem;
 class QGraphicsSceneMouseEvent;
 
 class ConnectorGraphicItem : public QObject, public QGraphicsPathItem
@@ -14,12 +16,15 @@ class ConnectorGraphicItem : public QObject, public QGraphicsPathItem
   Q_PROPERTY(QPointF previousPosition READ previousPosition WRITE setPreviousPosition NOTIFY previousPositionChanged)
 
 public:
-  explicit ConnectorGraphicItem(QObject *parent = 0);
+  explicit ConnectorGraphicItem(QObject *parent = 0, int type = 0);
   ~ConnectorGraphicItem();
 
   QPointF previousPosition() const;
   void setPreviousPosition(const QPointF previousPosition);
   void setPath(const QPainterPath &path);
+
+  void processCollidings(QList<QGraphicsItem *> collidins, QPainterPath *path, bool line_start);
+  bool checkRects();
 
 signals:
   void previousPositionChanged();
@@ -46,6 +51,9 @@ private:
   bool m_leftMouseButtonPressed;
   QList<CornerDots *> listDotes;
   int m_pointForCheck;
+  int type;
+  RectGraphicItem *input_rect;
+  RectGraphicItem *output_rect;
 
   void updateDots();
 };

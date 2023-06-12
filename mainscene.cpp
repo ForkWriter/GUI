@@ -3,9 +3,6 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QKeyEvent>
 #include <QDebug>
-#include "figures/connectorgraphicitem.h"
-#include "figures/selectionrect.h"
-#include "figures/rectgraphicitem.h"
 
 MainScene::MainScene(QObject *parent) :
     QGraphicsScene(parent),
@@ -58,10 +55,12 @@ void MainScene::mousePressEvent(QGraphicsSceneMouseEvent *event)
         }
     }
     switch (m_currentAction) {
-    case LineType: {
+      case One_to_Many:
+      case Many_to_Many:
+      case One_to_One: {
         if (m_leftMouseButtonPressed && !(event->button() & Qt::RightButton) && !(event->button() & Qt::MiddleButton)) {
             deselectItems();
-            ConnectorGraphicItem *polyline = new ConnectorGraphicItem();
+            ConnectorGraphicItem *polyline = new ConnectorGraphicItem(this, m_currentAction);
             currentItem = polyline;
             addItem(currentItem);
             connect(polyline, &ConnectorGraphicItem::clicked, this, &MainScene::signalSelectItem);
@@ -69,6 +68,8 @@ void MainScene::mousePressEvent(QGraphicsSceneMouseEvent *event)
             QPainterPath path;
             path.moveTo(m_previousPosition);
             polyline->setPath(path);
+            QList<QGraphicsItem *> colliding = collidingItems(polyline);
+            polyline->processCollidings(colliding, &path, true);
             emit signalNewSelectItem(polyline);
         }
         break;
@@ -83,6 +84,12 @@ void MainScene::mousePressEvent(QGraphicsSceneMouseEvent *event)
             connect(rectangle, &RectGraphicItem::signalMove, this, &MainScene::slotMove);
             emit signalNewSelectItem(rectangle);
         }
+        break;
+    }
+    case RedactType: {
+        QList<QGraphicsItem *> colliding = items(event->scenePos());
+        if (!colliding.empty())
+          currentItem = colliding.last();
         break;
     }
     case SelectionType: {
@@ -104,7 +111,9 @@ void MainScene::mousePressEvent(QGraphicsSceneMouseEvent *event)
 void MainScene::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
     switch (m_currentAction) {
-    case LineType: {
+      case One_to_Many:
+      case Many_to_Many:
+      case One_to_One: {
         if (m_leftMouseButtonPressed) {
             ConnectorGraphicItem * polyline = qgraphicsitem_cast<ConnectorGraphicItem *>(currentItem);
             QPainterPath path;
@@ -114,16 +123,9 @@ void MainScene::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
         }
         break;
     }
-    case RectangleType: {
-        if (m_leftMouseButtonPressed) {
-            auto dx = event->scenePos().x() - m_previousPosition.x();
-            auto dy = event->scenePos().y() - m_previousPosition.y();
-            RectGraphicItem * rectangle = qgraphicsitem_cast<RectGraphicItem *>(currentItem);
-            rectangle->setRect((dx > 0) ? m_previousPosition.x() : event->scenePos().x(),
-                                   (dy > 0) ? m_previousPosition.y() : event->scenePos().y(),
-                                   qAbs(dx), qAbs(dy));
-        }
-        break;
+    case RectangleType:
+    case RedactType: {
+      break;
     }
     case SelectionType: {
         if (m_leftMouseButtonPressed) {
@@ -147,11 +149,45 @@ void MainScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 {
     if (event->button() & Qt::LeftButton) m_leftMouseButtonPressed = false;
     switch (m_currentAction) {
-    case LineType:
+    case One_to_Many:
+    case Many_to_Many:
+    case One_to_One: {
+        if (!m_leftMouseButtonPressed &&
+                !(event->button() & Qt::RightButton) &&
+                !(event->button() & Qt::MiddleButton)) {
+          ConnectorGraphicItem *polyline = dynamic_cast<ConnectorGraphicItem*>(currentItem);
+          QPainterPath path = polyline->path();
+          QList<QGraphicsItem *> colliding = collidingItems(polyline);
+          polyline->processCollidings(colliding, &path, false);
+          currentItem = nullptr;
+          if (!polyline->checkRects()) {
+            removeItem(polyline);
+            delete polyline;
+          }
+        }
+        break;
+      }
     case RectangleType: {
         if (!m_leftMouseButtonPressed &&
                 !(event->button() & Qt::RightButton) &&
                 !(event->button() & Qt::MiddleButton)) {
+            RectGraphicItem *rectangle = qgraphicsitem_cast<RectGraphicItem *>(currentItem);
+            rectangle->setRect(event->scenePos().x(), event->scenePos().y(), 150, 150);
+            rectangle->setDB(current_model->dbms());
+            EntityNameDialog *dialog = new EntityNameDialog(nullptr, rectangle, current_model);
+            dialog->show();
+            currentItem = nullptr;
+        }
+        break;
+    }
+    case RedactType: {
+        if (!m_leftMouseButtonPressed &&
+                !(event->button() & Qt::RightButton) &&
+                !(event->button() & Qt::MiddleButton)) {
+            RectGraphicItem *rectangle = qgraphicsitem_cast<RectGraphicItem *>(currentItem);
+            if (rectangle) {
+              rectangle->redactAttributes();
+            }
             currentItem = nullptr;
         }
         break;
@@ -185,8 +221,11 @@ void MainScene::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 void MainScene::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
 {
     switch (m_currentAction) {
-    case LineType:
+    case One_to_Many:
+    case Many_to_Many:
+    case One_to_One:
     case RectangleType:
+    case RedactType:
     case SelectionType:
         break;
     default:
@@ -233,5 +272,32 @@ void MainScene::slotMove(QGraphicsItem *signalOwner, qreal dx, qreal dy)
 {
     foreach (QGraphicsItem *item, selectedItems()) {
         if(item != signalOwner) item->moveBy(dx,dy);
-    }
+      }
+}
+
+void MainScene::updateModel()
+{
+  clear();
+  std::vector<std::string> entities =  current_model->entities();
+  for (int i = 0; i< entities.size(); i++) {
+    deselectItems();
+    RectGraphicItem *rectangle = new RectGraphicItem();
+    addItem(rectangle);
+    connect(rectangle, &RectGraphicItem::clicked, this, &MainScene::signalSelectItem);
+    connect(rectangle, &RectGraphicItem::signalMove, this, &MainScene::slotMove);
+    emit signalNewSelectItem(rectangle);
+    rectangle->setDB(current_model->dbms());
+    rectangle->setEntity(std::make_pair(entities[i], current_model->entity(entities[i])), true);
+    rectangle->restoreFromAdditionalParams();
+  }
+}
+
+Model *MainScene::getCurrent_model() const
+{
+  return current_model;
+}
+
+void MainScene::setCurrent_model(Model *newCurrent_model)
+{
+  current_model = newCurrent_model;
 }

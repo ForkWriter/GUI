@@ -4,6 +4,12 @@
 #include <QObject>
 #include <QGraphicsScene>
 
+#include "forms/entitynamedialog.h"
+#include "figures/connectorgraphicitem.h"
+#include "figures/selectionrect.h"
+#include "figures/rectgraphicitem.h"
+#include "datamodeler/model/model.hpp"
+
 class QGraphicsSceneMouseEvent;
 class QKeyEvent;
 
@@ -20,9 +26,12 @@ public:
 
     enum ActionTypes {
         DefaultType,
-        LineType,
+        One_to_Many,
+        Many_to_Many,
+        One_to_One,
         RectangleType,
-        SelectionType
+        SelectionType,
+        RedactType
     };
 
     int currentAction() const;
@@ -30,6 +39,10 @@ public:
 
     void setCurrentAction(const int type);
     void setPreviousPosition(const QPointF previousPosition);
+
+    void setCurrent_model(Model *newCurrent_model);
+
+    Model *getCurrent_model() const;
 
 signals:
     void previousPositionChanged();
@@ -49,6 +62,7 @@ private slots:
 
 public slots:
     void slotMove(QGraphicsItem *signalOwner, qreal dx, qreal dy);
+    void updateModel();
 
 private:
     QGraphicsItem *currentItem;
@@ -56,6 +70,7 @@ private:
     int m_previousAction;
     QPointF m_previousPosition;
     bool m_leftMouseButtonPressed;
+    Model *current_model;
 };
 
 #endif // MAINSCENE_H

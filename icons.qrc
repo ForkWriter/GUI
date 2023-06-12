@@ -5,5 +5,12 @@
         <file>icons/content-save.png</file>
         <file>icons/folder-upload.png</file>
         <file>icons/rotate-right.png</file>
+        <file>icons/QListViewExplorer/file.png</file>
+        <file>icons/QListViewExplorer/folder.png</file>
+        <file>icons/QListViewExplorer/folderup.png</file>
+        <file>icons/QListViewExplorer/iconlist.png</file>
+        <file>icons/QListViewExplorer/license.html</file>
+        <file>icons/QListViewExplorer/list.png</file>
+        <file>icons/QListViewExplorer/zip.png</file>
     </qresource>
 </RCC>

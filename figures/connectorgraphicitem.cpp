@@ -5,8 +5,11 @@
 #include <QGraphicsPathItem>
 #include <QDebug>
 
-ConnectorGraphicItem::ConnectorGraphicItem(QObject *parent) :
-    QObject(parent)
+ConnectorGraphicItem::ConnectorGraphicItem(QObject *parent, int type) :
+    QObject(parent),
+    type(type),
+    input_rect(nullptr),
+    output_rect(nullptr)
 {
     setAcceptHoverEvents(true);
     setFlags(ItemIsSelectable|ItemSendsGeometryChanges);
@@ -33,28 +36,80 @@ void ConnectorGraphicItem::setPreviousPosition(const QPointF previousPosition)
 
 void ConnectorGraphicItem::setPath(const QPainterPath &path)
 {
-    QGraphicsPathItem::setPath(path);
+  QGraphicsPathItem::setPath(path);
+}
+
+void ConnectorGraphicItem::processCollidings(QList<QGraphicsItem *> collidins, QPainterPath *path, bool line_start)
+{
+  for (QGraphicsItem* item: collidins) {
+    if (dynamic_cast<RectGraphicItem*>(item)) {
+      RectGraphicItem *rect = dynamic_cast<RectGraphicItem*>(item);
+      if (line_start) {
+        input_rect = rect;
+//        QPointF start_dot = path->currentPosition();
+//        QRectF rect = input_rect->boundingRect();
+//        QPointF rect_cen = rect.center();
+//        auto p_w = start_dot.x(), p_h = start_dot.y();
+//        auto r_w = rect.width()/2, r_h = rect.height()/2;
+//        auto c_w = rect_cen.x(), c_h = rect_cen.y();
+//        if (p_w <= c_w && p_h <= c_h) {
+//          if ((p_w + c_w + r_w) < (p_h + c_h + r_h)) {
+//            path->moveTo(p_w, c_w - r_w);
+//          } else {
+
+//          }
+//        } else if (p_w >= c_w && p_h >= c_h) {
+
+//        } else if (p_w <= c_w && p_h >= c_h) {
+
+//        } else {
+
+//        }
+        return;
+      }
+      else {
+        output_rect = rect != input_rect ? rect : nullptr;
+//        if (output_rect) {
+//          QPointF end_dot = path->currentPosition();
+
+//        }
+        return;
+      }
+    }
+  }
+}
+
+bool ConnectorGraphicItem::checkRects()
+{
+  if (input_rect && output_rect) {
+    input_rect->addConnector(this);
+    output_rect->addConnector(this);
+    //тут в модель добавляется коннектор и т.д.
+    //заменить типы коннектора на типы из модели, а не кастомные
+    return true;
+  }
+  return false;
 }
 
 void ConnectorGraphicItem::mouseMoveEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (m_leftMouseButtonPressed) {
-        auto dx = event->scenePos().x() - m_previousPosition.x();
-        auto dy = event->scenePos().y() - m_previousPosition.y();
-        moveBy(dx,dy);
-        setPreviousPosition(event->scenePos());
-        emit signalMove(this, dx, dy);
-    }
+//    if (m_leftMouseButtonPressed) {
+//        auto dx = event->scenePos().x() - m_previousPosition.x();
+//        auto dy = event->scenePos().y() - m_previousPosition.y();
+//        moveBy(dx,dy);
+//        setPreviousPosition(event->scenePos());
+//        emit signalMove(this, dx, dy);
+//    }
     QGraphicsItem::mouseMoveEvent(event);
 }
 
 void ConnectorGraphicItem::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
-    if (event->button() & Qt::LeftButton) {
-        m_leftMouseButtonPressed = true;
-        setPreviousPosition(event->scenePos());
-        emit clicked(this);
-    }
+//    if (event->button() & Qt::LeftButton) {
+//        m_leftMouseButtonPressed = true;
+//        setPreviousPosition(event->scenePos());
+//        emit clicked(this);
+//    }
     QGraphicsItem::mousePressEvent(event);
 }
 

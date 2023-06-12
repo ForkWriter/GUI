@@ -3,8 +3,13 @@
 
 #include <QObject>
 #include <QGraphicsRectItem>
+#include <QGraphicsSimpleTextItem>
+#include "addattributedialog.h"
+#include "parametersdialog.h"
+#include "DataModeler/include/datamodeler/model/entity.hpp"
 
 class CornerDots;
+class ConnectorGraphicItem;
 class QGraphicsSceneMouseEvent;
 
 class RectGraphicItem : public QObject, public QGraphicsRectItem
@@ -16,24 +21,8 @@ public:
     explicit RectGraphicItem(QObject * parent = 0);
     ~RectGraphicItem();
 
-    enum ActionStates {
-        ResizeState = 0x01,
-        RotationState = 0x02
-    };
-
-    enum CornerFlags {
-        Top = 0x01,
-        Bottom = 0x02,
-        Left = 0x04,
-        Right = 0x08,
-        TopLeft = Top|Left,
-        TopRight = Top|Right,
-        BottomLeft = Bottom|Left,
-        BottomRight = Bottom|Right
-    };
-
     enum CornerGrabbers {
-        GrabberTop = 0,
+        GrabberTop,
         GrabberBottom,
         GrabberLeft,
         GrabberRight,
@@ -49,38 +38,57 @@ public:
     void setRect(qreal x, qreal y, qreal w, qreal h);
     void setRect(const QRectF &rect);
 
+    void addConnector(ConnectorGraphicItem *item);
+
+    void setEntity(const std::pair<std::string, Entity *> &newEntity, bool restore = false);
+
+    void setDB(const std::string &newDB);
+
+    void restoreFromAdditionalParams();
+
+    void setName(std::string name);
+
+    void redactAttributes();
+
+    QGraphicsSimpleTextItem *getEntity_name() const;
+
+    const std::pair<std::string, Entity *> &getEntity() const;
+
 signals:
     void rectChanged(RectGraphicItem *rect);
     void previousPositionChanged();
     void clicked(RectGraphicItem *rect);
     void signalMove(QGraphicsItem *item, qreal dx, qreal dy);
 
+private slots:
+    void attribute_parameters(Attribute* new_attr, std::string name = "");
+    void attribute_add(std::string name, Attribute *new_attr);
+
 protected:
     void mouseMoveEvent(QGraphicsSceneMouseEvent *event) override;
     void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseReleaseEvent(QGraphicsSceneMouseEvent *event) override;
     void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event) override;
-    void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
-    void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
-    void hoverMoveEvent(QGraphicsSceneHoverEvent *event) override;
-    QVariant itemChange(GraphicsItemChange change, const QVariant &value) override;
 
 private:
-    unsigned int m_cornerFlags;
-    unsigned int m_actionFlags;
-    QPointF m_previousPosition;
+    QPointF m_previousPosition, scenePos;
     bool m_leftMouseButtonPressed;
+    double max_width, max_height;
     CornerDots *cornerGrabber[8];
+    std::string DB;
+    std::pair<std::string, Entity*> entity;
+    QGraphicsSimpleTextItem *entity_name;
+    std::vector<QGraphicsSimpleTextItem*> attributes;
+    QGraphicsRectItem *prim_rect;
+    QList<ConnectorGraphicItem*> connectors;
 
-    void resizeLeft( const QPointF &pt);
-    void resizeRight( const QPointF &pt);
-    void resizeBottom(const QPointF &pt);
-    void resizeTop(const QPointF &pt);
-
-    void rotateItem(const QPointF &pt);
     void setPositionGrabbers();
-    void setVisibilityGrabbers();
     void hideGrabbers();
+    void setAttributes();
+    bool checkPos(std::string params);
+    void saveAdditionalParams(QPointF point);
+    std::vector<qreal> restoreCoords();
+
 };
 
 #endif // RECTGRAPHICITEM_H
